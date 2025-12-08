@@ -11,14 +11,35 @@ export default function Dashboard() {
     const [severityFilter, setSeverityFilter] = useState("All");
 
     const [mapData, setMapData] = useState([]);
+    const [backendStats, setBackendStats] = useState(null);
+    const [loadError, setLoadError] = useState(null);
 
-    // --- Backend Integration Ready ---
-    // Connect your API here later to populate 'traffic' and 'mapData'
     useEffect(() => {
-        // Example: 
-        // fetch('/api/threats').then(res => res.json()).then(data => setTraffic(data));
+        const fetchData = async () => {
+            try {
+                const [attacksRes, statsRes, trafficRes] = await Promise.all([
+                    fetch('http://127.0.0.1:8000/api/attacks/'),
+                    fetch('http://127.0.0.1:8000/api/stats/'),
+                    fetch('http://127.0.0.1:8000/api/traffic/'),
+                ]);
 
-        // For now, we leave the state empty as requested.
+                const [attacksData, statsData, trafficData] = await Promise.all([
+                    attacksRes.json(),
+                    statsRes.json(),
+                    trafficRes.json(),
+                ]);
+
+                setTraffic(attacksData || []);
+                setBackendStats(statsData || null);
+                setMapData(trafficData || []);
+                setLoadError(null);
+            } catch (err) {
+                console.error('Failed to load dashboard data', err);
+                setLoadError('Could not load dashboard data.');
+            }
+        };
+
+        fetchData();
     }, []);
 
     // Filter Logic
@@ -44,6 +65,10 @@ export default function Dashboard() {
     }, [traffic, searchTerm, severityFilter]);
 
     const stats = useMemo(() => {
+        if (backendStats) {
+            return backendStats;
+        }
+
         const dataToUse = filteredTraffic;
         const total = dataToUse.length;
         const threats = dataToUse.filter(t => t.severity === 'High' || t.severity === 'Critical').length;
@@ -58,10 +83,16 @@ export default function Dashboard() {
             breaches,
             health: Math.max(0, 100 - (threats * 2))
         };
-    }, [filteredTraffic]);
+    }, [filteredTraffic, backendStats]);
 
     return (
         <div className="p-6 space-y-6 pt-24 min-h-screen">
+            {loadError && (
+                <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-red-200 text-sm">
+                    {loadError}
+                </div>
+            )}
+
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard
@@ -75,6 +106,7 @@ export default function Dashboard() {
                     title="Threats Detected"
                     value={stats.threats.toLocaleString()}
                     icon={AlertTriangle}
+                    
                     trend={searchTerm ? "Filtered" : "+0%"}
                     color="text-yellow-500"
                 />
