@@ -46,9 +46,12 @@ export default function Dashboard() {
     const filteredTraffic = useMemo(() => {
         let data = traffic;
 
-        // 1. Severity Filter
+        // 1. Severity Filter (case-insensitive)
         if (severityFilter !== "All") {
-            data = data.filter(t => t.severity === severityFilter);
+            const filterLower = severityFilter.toLowerCase();
+            data = data.filter(t =>
+                (t.severity || "").toLowerCase() === filterLower
+            );
         }
 
         // 2. Search Filter
@@ -57,33 +60,70 @@ export default function Dashboard() {
             data = data.filter(t =>
                 (t.type && t.type.toLowerCase().includes(lowerTerm)) ||
                 (t.ip && t.ip.includes(lowerTerm)) ||
-                (t.status && t.status.toLowerCase().includes(lowerTerm))
+                (t.status && t.status.toLowerCase().includes(lowerTerm)) ||  // stage from status code
+                (t.result && t.result.toLowerCase().includes(lowerTerm))     // compat
             );
         }
 
         return data;
     }, [traffic, searchTerm, severityFilter]);
 
+    // Stats: prefer backend /api/stats/, fallback to derived values
     const stats = useMemo(() => {
-        if (backendStats) {
+        if (backendStats && typeof backendStats.total !== 'undefined') {
             return backendStats;
         }
 
-        const dataToUse = filteredTraffic;
+        // Fallback: mirror backend logic as closely as possible
+        const dataToUse = traffic || [];
         const total = dataToUse.length;
-        const threats = dataToUse.filter(t => t.severity === 'High' || t.severity === 'Critical').length;
+
+        // Threats: any attack where type != 'Benign'
+        const threats = dataToUse.filter(t => t.type !== 'Benign').length;
+
+        // Breaches: same logic as backend stats()
+        const breachTypes = new Set([
+            "Command Injection",
+            "SSRF",
+            "Directory Traversal / LFI",
+            "Remote File Inclusion (RFI)",
+            "Shell Upload Attempt",
+            "Bruteforce Attack",
+        ]);
+
         const breaches = dataToUse.filter(t => {
-            const size = parseFloat(t.response_size);
-            return t.status_code === 200 && size > 5 && (t.severity === 'High' || t.severity === 'Critical');
+            const type = t.type;
+            const rawStatus = t.status_code;
+
+            // status_code may be "N/A" or number; coerce to int or 0
+            let statusCode = 0;
+            if (typeof rawStatus === 'number') {
+                statusCode = rawStatus;
+            } else if (typeof rawStatus === 'string') {
+                const parsed = parseInt(rawStatus, 10);
+                statusCode = Number.isNaN(parsed) ? 0 : parsed;
+            }
+
+            const isBreachType = breachTypes.has(type);
+            const isSuccess = statusCode >= 200 && statusCode < 300;
+
+            return isBreachType && isSuccess;
         }).length;
+
+        let health = 100;
+        if (total > 0) {
+            const risk = Math.min(100, Math.trunc((threats / total) * 100));
+            health = Math.max(0, 100 - risk);
+        }
 
         return {
             total,
             threats,
             breaches,
-            health: Math.max(0, 100 - (threats * 2))
+            health,
+            breakdown: {},
         };
-    }, [filteredTraffic, backendStats]);
+    }, [traffic, backendStats]);
 
     return (
         <div className="p-6 space-y-6 pt-24 min-h-screen">
@@ -106,7 +146,6 @@ export default function Dashboard() {
                     title="Threats Detected"
                     value={stats.threats.toLocaleString()}
                     icon={AlertTriangle}
-                    
                     trend={searchTerm ? "Filtered" : "+0%"}
                     color="text-yellow-500"
                 />

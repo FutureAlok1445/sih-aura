@@ -129,6 +129,13 @@ SENSITIVE_PATHS = [
 
 
 def _risk_score(attack_type: str, url: str, success: bool, attempt_count: int) -> int:
+    """
+    Compute a numeric risk score (0–100) based on:
+    - Base severity per attack type
+    - Sensitive URL paths
+    - Whether the attack appears successful
+    - Frequency of attempts
+    """
     risk = 0
 
     # 1) Attack type base severity
@@ -157,21 +164,19 @@ def _severity_for_attack(
     attempt_count: int = 1,
 ) -> str:
     """
-    Returns LOW / MEDIUM / HIGH / CRITICAL.
-
-    Existing code can still call _severity_for_attack(attack_type)
-    because url/success/attempt_count have safe defaults.
+    Returns Low / Medium / High / Critical
+    based on risk score thresholds.
     """
     risk = _risk_score(attack_type, url, success, attempt_count)
 
     if risk <= 25:
-        return "LOW"
+        return "Low"
     elif risk <= 50:
-        return "MEDIUM"
+        return "Medium"
     elif risk <= 75:
-        return "HIGH"
+        return "High"
     else:
-        return "CRITICAL"
+        return "Critical"
 
 
 def _filtered_attack_rows(df: pd.DataFrame) -> pd.DataFrame:
@@ -226,20 +231,26 @@ def attacks(request):
         except Exception:
             target = url
 
-        # Current usage: only attack_type is used for severity, others use defaults
-        severity = _severity_for_attack(attack_type)
+        # Determine if HTTP result indicates success for risk calculation
+        success = 200 <= status_code < 300
 
-        # 2. Determine Result: Successful vs Unsuccessful
-        # 2xx = Success (The server executed the request)
-        # 4xx/5xx = Blocked/Failed (The server rejected it)
+        # Severity from risk model (now using status code + URL)
+        severity = _severity_for_attack(
+            attack_type=attack_type,
+            url=url,
+            success=success,
+            attempt_count=1,  # can be extended with per-IP counters
+        )
+
+        # 2. Determine Status / Stage from Status Code
+        # 2xx = Successful (server executed request)
+        # 4xx/5xx = Blocked/Failed (rejected)
         if 200 <= status_code < 300:
-            result_label = "Successful"
-            # Note: "Successful" for an ATTACK is bad for the server,
-            # but accurate for the log.
+            stage_label = "Successful"
         elif status_code == 0:
-            result_label = "Unknown"  # No response captured
+            stage_label = "Unknown"  # No response captured
         else:
-            result_label = "Blocked"  # 403, 404, 500 etc.
+            stage_label = "Blocked"  # 403, 404, 500 etc.
 
         records.append({
             "id": int(idx) + 1,
@@ -249,8 +260,9 @@ def attacks(request):
             "type": attack_type,
             "severity": severity,
             "status_code": status_code if status_code > 0 else "N/A",
-            "status": "Threat",
-            "result": result_label,
+            # stage/status derived directly from HTTP status code
+            "status": stage_label,
+            "result": stage_label,  # kept for compatibility if frontend uses `result`
             "url": url,
             "evidence": evidence,
         })
@@ -270,8 +282,11 @@ def stats(request):
     csv_path = _get_latest_csv_path()
     if not csv_path:
         return JsonResponse({
-            "total": 0, "threats": 0, "breaches": 0, "health": 100,
-            "breakdown": {}
+            "total": 0,
+            "threats": 0,
+            "breaches": 0,
+            "health": 100,
+            "breakdown": {},
         })
 
     df = pd.read_csv(csv_path).fillna("")
@@ -281,14 +296,15 @@ def stats(request):
 
     # 2. THREATS
     # logic: count any row where attack_type is NOT 'Benign'
-    # This matches: Total - Final Benign from your console output
     df_threats = df[df["attack_type"] != "Benign"].copy()
     threats = len(df_threats)
 
     # 3. BREACHES (Critical Fix)
     # Only count as a breach if the Status Code indicates success (200-299)
-    # Ensure Status_Code is numeric first
-    df_threats["Status_Code"] = pd.to_numeric(df_threats["Status_Code"], errors='coerce').fillna(0).astype(int)
+    df_threats["Status_Code"] = pd.to_numeric(
+        df_threats["Status_Code"],
+        errors='coerce'
+    ).fillna(0).astype(int)
 
     breach_types = {
         "Command Injection", "SSRF", "Directory Traversal / LFI",
@@ -310,17 +326,15 @@ def stats(request):
         risk = min(100, int((threats / total) * 100))
         health = max(0, 100 - risk)
 
-    # 5. (Optional) DETAILED BREAKDOWN
-    # This groups by the 'detection_method' column created in threat_analyzer.py
-    # format: {'Regex': 678, 'ML': 179, ...}
-    breakdown = df_threats['detection_method'].value_counts().to_dict()
+    # 5. DETAILED BREAKDOWN by detection method
+    breakdown = df_threats.get('detection_method', pd.Series(dtype=str)).value_counts().to_dict()
 
     return JsonResponse({
         "total": int(total),
         "threats": int(threats),
         "breaches": int(breaches),
         "health": int(health),
-        "breakdown": breakdown  # Now your frontend has access to the specific counts!
+        "breakdown": breakdown,
     })
 
 
@@ -350,7 +364,6 @@ def traffic(request):
     try:
         # Convert Timestamp column to datetime objects
         # We assume timestamp is Unix float (from Scapy) or standard string
-        # 'coerce' handles errors gracefully
         df_attacks['dt'] = pd.to_datetime(
             df_attacks['Timestamp'],
             unit='s',
@@ -377,7 +390,7 @@ def traffic(request):
             data.append({
                 # Format time as HH:MM:SS for the X-Axis
                 "time": row['dt'].strftime('%H:%M:%S'),
-                "attacks": int(row['attacks'])
+                "attacks": int(row['attacks']),
             })
 
         return JsonResponse(data, safe=False)

@@ -1,10 +1,22 @@
 import React, { useState } from "react";
-import { Search, ShieldAlert, ShieldCheck, AlertTriangle, FileJson, FileSpreadsheet, Download, ChevronDown, Flag, Shield } from "lucide-react";
+import {
+    Search,
+    ShieldAlert,
+    ShieldCheck,
+    AlertTriangle,
+    FileJson,
+    FileSpreadsheet,
+    Download,
+    ChevronDown,
+    Flag,
+    Shield
+} from "lucide-react";
 import FluidDropdown from "./ui/FluidDropdown";
 
 export default function ThreatLogTable({ attacks = [], onSearch, selectedSeverity = "All", onSeverityChange }) {
     const [isExportOpen, setIsExportOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
+
     const itemsPerPage = 10;
 
     // Use passed attacks directly as they are filtered by parent
@@ -21,22 +33,34 @@ export default function ThreatLogTable({ attacks = [], onSearch, selectedSeverit
         }
     };
 
-    // Badge Logic: Returns tailored styles based on severity
-    const getSeverityBadge = (severity) => {
+    // Helper: normalize status_code to integer (for decision logic)
+    const parseStatusCode = (statusCode) => {
+        if (typeof statusCode === "number") return statusCode;
+        if (typeof statusCode === "string") {
+            const parsed = parseInt(statusCode, 10);
+            if (!Number.isNaN(parsed)) return parsed;
+        }
+        return 0;
+    };
+
+    // Severity badge (case-insensitive)
+    const getSeverityBadge = (severityRaw) => {
+        const severity = (severityRaw || "").toLowerCase();
+
         switch (severity) {
-            case "Critical":
+            case "critical":
                 return (
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-red-500/10 text-red-500 border border-red-500/20">
                         CRITICAL
                     </span>
                 );
-            case "High":
+            case "high":
                 return (
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-orange-500/10 text-orange-500 border border-orange-500/20">
                         HIGH
                     </span>
                 );
-            case "Medium":
+            case "medium":
                 return (
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">
                         MEDIUM
@@ -51,21 +75,25 @@ export default function ThreatLogTable({ attacks = [], onSearch, selectedSeverit
         }
     };
 
-    // Decision Logic
-    const getDecisionBadge = (status, verdict, statusCode) => {
-        if (verdict === "BREACH CONFIRMED" || status === 'Success' || statusCode === 200) {
+    // Final Decision Badge: driven by status code (2xx = BREACH CONFIRMED)
+    const getDecisionBadge = (type, statusCodeRaw) => {
+        const statusCode = parseStatusCode(statusCodeRaw);
+
+        if (statusCode >= 200 && statusCode < 300) {
             return (
                 <span className="flex items-center gap-1.5 text-red-500 font-bold text-xs tracking-wide px-2 py-1 bg-red-500/10 rounded border border-red-500/20">
                     <AlertTriangle className="w-3 h-3" /> BREACH CONFIRMED
                 </span>
             );
-        } else if (status === 'Flagged') {
+        } else if (statusCode === 0) {
             return (
                 <span className="flex items-center gap-1.5 text-yellow-500 font-medium text-xs tracking-wide px-2 py-1 bg-yellow-500/10 rounded border border-yellow-500/20">
-                    <Flag className="w-3 h-3" /> FLAGGED
+                    <Flag className="w-3 h-3" /> UNKNOWN
                 </span>
             );
         }
+
+        // Non-2xx, non-0 => Blocked
         return (
             <span className="flex items-center gap-1.5 text-emerald-500 font-medium text-xs tracking-wide px-2 py-1 bg-emerald-500/10 rounded border border-emerald-500/20">
                 <ShieldCheck className="w-3 h-3" /> BLOCKED
@@ -74,23 +102,43 @@ export default function ThreatLogTable({ attacks = [], onSearch, selectedSeverit
     };
 
     const exportCSV = () => {
-        const headers = ['Timestamp', 'Source IP', 'Target', 'Attack Vector', 'Severity', 'Final Decision', 'Status Code', 'Response Size'];
-        const csvContent = [
-            headers.join(','),
-            ...filteredData.map(row => [
-                row.timestamp,
-                row.ip,
-                `"${(row.target || '').replace(/"/g, '""')}"`,
-                row.type,
-                row.severity,
-                (row.status === 'Success' || row.status_code === 200) ? 'BREACH CONFIRMED' : row.status,
-                row.status_code,
-                row.response_size
-            ].join(','))
-        ].join('\n');
+        const headers = [
+            "Timestamp",
+            "Source IP",
+            "Target",
+            "Attack Vector",
+            "Severity",
+            "Final Decision",
+            "Status Code",
+            "Response Size"
+        ];
 
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
+        const csvContent = [
+            headers.join(","),
+            ...filteredData.map((row) => {
+                const statusCode = parseStatusCode(row.status_code);
+                const finalDecision =
+                    statusCode >= 200 && statusCode < 300
+                        ? "BREACH CONFIRMED"
+                        : statusCode === 0
+                        ? "UNKNOWN"
+                        : "BLOCKED";
+
+                return [
+                    row.timestamp,
+                    row.ip,
+                    `"${(row.target || "").replace(/"/g, '""')}"`,
+                    row.type,
+                    row.severity,
+                    finalDecision,
+                    row.status_code,
+                    row.response_size
+                ].join(",");
+            })
+        ].join("\n");
+
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
         link.download = `aura_threat_logs_${new Date().toISOString()}.csv`;
         link.click();
@@ -98,8 +146,8 @@ export default function ThreatLogTable({ attacks = [], onSearch, selectedSeverit
 
     const exportJSON = () => {
         const jsonContent = JSON.stringify(filteredData, null, 2);
-        const blob = new Blob([jsonContent], { type: 'application/json' });
-        const link = document.createElement('a');
+        const blob = new Blob([jsonContent], { type: "application/json" });
+        const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
         link.download = `aura_threat_logs_${new Date().toISOString()}.json`;
         link.click();
@@ -107,7 +155,6 @@ export default function ThreatLogTable({ attacks = [], onSearch, selectedSeverit
 
     return (
         <div className="w-full space-y-4 p-6 border border-white/10 rounded-xl bg-black/40 backdrop-blur-md shadow-sm">
-
             {/* Header Section */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
                 <div>
@@ -135,7 +182,7 @@ export default function ThreatLogTable({ attacks = [], onSearch, selectedSeverit
                     </div>
 
                     {/* Severity Filter */}
-                    <div className="relative z-10"> {/* Ensure dropdown z-index works */}
+                    <div className="relative z-10">
                         <FluidDropdown
                             selectedSeverity={selectedSeverity}
                             onSeverityChange={(val) => {
@@ -153,20 +200,30 @@ export default function ThreatLogTable({ attacks = [], onSearch, selectedSeverit
                         >
                             <Download className="w-4 h-4" />
                             Export Data
-                            <ChevronDown className={`w-4 h-4 transition-transform ${isExportOpen ? 'rotate-180' : ''}`} />
+                            <ChevronDown
+                                className={`w-4 h-4 transition-transform ${
+                                    isExportOpen ? "rotate-180" : ""
+                                }`}
+                            />
                         </button>
 
                         {isExportOpen && (
                             <div className="absolute right-0 mt-2 w-48 bg-black/90 border border-white/10 rounded-lg shadow-xl backdrop-blur-xl z-50 py-1">
                                 <button
-                                    onClick={() => { exportCSV(); setIsExportOpen(false); }}
+                                    onClick={() => {
+                                        exportCSV();
+                                        setIsExportOpen(false);
+                                    }}
                                     className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-white/10 hover:text-white transition-colors text-left"
                                 >
                                     <FileSpreadsheet className="w-4 h-4 text-green-400" />
                                     Export as CSV
                                 </button>
                                 <button
-                                    onClick={() => { exportJSON(); setIsExportOpen(false); }}
+                                    onClick={() => {
+                                        exportJSON();
+                                        setIsExportOpen(false);
+                                    }}
                                     className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-300 hover:bg-white/10 hover:text-white transition-colors text-left"
                                 >
                                     <FileJson className="w-4 h-4 text-yellow-400" />
@@ -182,19 +239,34 @@ export default function ThreatLogTable({ attacks = [], onSearch, selectedSeverit
             <div className="overflow-x-auto rounded-lg border border-white/5">
                 <table className="w-full text-sm text-left">
                     <thead className="text-xs text-gray-400 uppercase bg-white/5">
-                        {/* Stage Headers */}
+                        {/* Stage Headers (conceptual pipeline) */}
                         <tr className="border-b border-white/10">
-                            <th colSpan="3" className="px-6 py-2 text-left font-bold text-blue-400 text-sm">
+                            <th
+                                colSpan="3"
+                                className="px-6 py-2 text-left font-bold text-blue-400 text-sm"
+                            >
                                 1. INGEST
-                                <span className="ml-2 text-xs font-normal text-gray-500">Real-time IPDR/PCAP Stream</span>
+                                <span className="ml-2 text-xs font-normal text-gray-500">
+                                    Real-time IPDR/PCAP Stream
+                                </span>
                             </th>
-                            <th colSpan="3" className="px-6 py-2 text-left font-bold text-yellow-400 text-sm">
+                            <th
+                                colSpan="3"
+                                className="px-6 py-2 text-left font-bold text-yellow-400 text-sm"
+                            >
                                 2. ANALYZE
-                                <span className="ml-2 text-xs font-normal text-gray-500">Correlation Engine</span>
+                                <span className="ml-2 text-xs font-normal text-gray-500">
+                                    Correlation Engine
+                                </span>
                             </th>
-                            <th colSpan="1" className="px-6 py-2 text-left font-bold text-red-400 text-sm">
+                            <th
+                                colSpan="1"
+                                className="px-6 py-2 text-left font-bold text-red-400 text-sm"
+                            >
                                 3. FINAL DECISION
-                                <span className="ml-2 text-xs font-normal text-gray-500">Classification</span>
+                                <span className="ml-2 text-xs font-normal text-gray-500">
+                                    Classification
+                                </span>
                             </th>
                         </tr>
                         {/* Column Headers */}
@@ -204,38 +276,61 @@ export default function ThreatLogTable({ attacks = [], onSearch, selectedSeverit
                             <th className="px-6 py-3 font-medium">Target</th>
                             <th className="px-6 py-3 font-medium">Attack Type</th>
                             <th className="px-6 py-3 font-medium">Severity</th>
-                            <th className="px-6 py-3 font-medium">Stage</th>
+                            <th className="px-6 py-3 font-medium">Status Code</th>
                             <th className="px-6 py-3 font-medium">Final Decision</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-white/10">
                         {paginatedData.length > 0 ? (
                             paginatedData.map((attack, index) => (
-                                <tr key={index} className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
-                                    <td className="px-6 py-3 text-gray-400 font-mono text-xs">{new Date(attack.timestamp).toLocaleTimeString()}</td>
+                                <tr
+                                    key={index}
+                                    className="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
+                                >
+                                    <td className="px-6 py-3 text-gray-400 font-mono text-xs">
+                                        {attack.timestamp
+                                            ? new Date(attack.timestamp).toLocaleTimeString()
+                                            : "-"}
+                                    </td>
 
                                     {/* 1. INGEST */}
-                                    <td className="px-6 py-3 font-mono text-xs text-blue-300">{attack.ip}</td>
-                                    <td className="px-6 py-3 text-gray-400 max-w-[150px] truncate" title={attack.target || '/'}>
-                                        {attack.target || '/'}
+                                    <td className="px-6 py-3 font-mono text-xs text-blue-300">
+                                        {attack.ip}
+                                    </td>
+                                    <td
+                                        className="px-6 py-3 text-gray-400 max-w-[150px] truncate"
+                                        title={attack.target || "/"}
+                                    >
+                                        {attack.target || "/"}
                                     </td>
 
                                     {/* 2. ANALYZE */}
-                                    <td className="px-6 py-3 text-white font-medium">{attack.type}</td>
-                                    <td className="px-6 py-3">{getSeverityBadge(attack.severity)}</td>
-                                    <td className="px-6 py-3 text-xs text-gray-400">
-                                        {attack.stage || 'Detection'}
+                                    <td className="px-6 py-3 text-white font-medium">
+                                        {attack.type}
+                                    </td>
+                                    <td className="px-6 py-3">
+                                        {getSeverityBadge(attack.severity)}
+                                    </td>
+                                    <td className="px-6 py-3 text-xs text-gray-300">
+                                        {attack.status_code !== undefined &&
+                                        attack.status_code !== null &&
+                                        attack.status_code !== ""
+                                            ? attack.status_code
+                                            : "N/A"}
                                     </td>
 
                                     {/* 3. FINAL DECISION */}
                                     <td className="px-6 py-3">
-                                        {getDecisionBadge(attack.status, attack.verdict, attack.status_code)}
+                                        {getDecisionBadge(attack.type, attack.status_code)}
                                     </td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
+                                <td
+                                    colSpan="7"
+                                    className="px-6 py-12 text-center text-gray-500"
+                                >
                                     <div className="flex flex-col items-center gap-2">
                                         <Shield className="w-8 h-8 opacity-20" />
                                         <p>No matching logs found</p>
@@ -251,7 +346,14 @@ export default function ThreatLogTable({ attacks = [], onSearch, selectedSeverit
             {totalPages > 1 && (
                 <div className="flex items-center justify-between pt-4 border-t border-white/10">
                     <div className="text-sm text-gray-500">
-                        Page <span className="text-white font-medium">{currentPage}</span> of <span className="text-white font-medium">{totalPages}</span>
+                        Page{" "}
+                        <span className="text-white font-medium">
+                            {currentPage}
+                        </span>{" "}
+                        of{" "}
+                        <span className="text-white font-medium">
+                            {totalPages}
+                        </span>
                     </div>
                     <div className="flex items-center gap-2">
                         <button
