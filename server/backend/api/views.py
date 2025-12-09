@@ -246,7 +246,6 @@ def _filtered_attack_rows(df: pd.DataFrame) -> pd.DataFrame:
 # ============================================================
 #  /api/attacks/  – detailed rows for table + donut
 # ============================================================
-
 def attacks(request):
     """
     GET /api/attacks/
@@ -264,33 +263,89 @@ def attacks(request):
 
     records = []
     for idx, row in df_attacks.iterrows():
+
+        # ===== BASE FIELDS =====
         attack_type = row.get("attack_type", "Benign")
         src_ip = row.get("Source_IP", "")
         url = row.get("URL", "")
         timestamp = row.get("Timestamp", "")
-        
         dest_ip = row.get("Dest_IP", "-")
         method = row.get("Method", "GET")
         body = row.get("POST_Body", "")
-        # NEW FIELD — BYTES
-        byte_size = row.get("Byte_Size", 0)   # <---
 
+        # NEW → Byte-Size (works for POST body)
+        byte_size = row.get("Byte_Size", 0)
+        if byte_size in ["", None, 0]:
+            byte_size = len(body.encode())      # calculate if missing
+
+        # ===== STATUS CODE FIX =====
         raw_status = row.get("Status_Code", 0)
         try:
             status_code = int(float(str(raw_status))) if raw_status != "" else 0
-        except Exception:
+        except:
             status_code = 0
 
-        evidence = row.get("evidence", "Pattern match detected")
-        success = 200 <= status_code < 300
-        severity = _severity_for_attack(attack_type, str(url), success, 1)
+        base_stage = (
+            "Successful" if 200 <= status_code < 300
+            else "Unknown" if status_code == 0
+            else "Blocked"
+        )
 
-        if 200 <= status_code < 300:
-            stage_label = "Successful"
-        elif status_code == 0:
-            stage_label = "Unknown"
+        # ========== CUSTOM BODY-BASED LOGIC ==========
+        custom_stage = base_stage
+        evidence = ""
+
+        atk = attack_type.lower()
+
+        # --- SQL Injection ---
+        if atk == "sql injection":
+            evidence = f"SQLi payload size: {byte_size} bytes"
+            custom_stage = "Successful" if byte_size > 30 else "Blocked"
+
+        # --- XSS Detection ---
+        elif atk == "xss":
+            import re
+            script = re.search(r"<script.*?</script>", body, re.I | re.S)
+            if script:
+                evidence = f"XSS script extracted: {script.group(0)[:100]}..."
+                custom_stage = "Successful"
+            else:
+                evidence = "XSS markers detected"
+                custom_stage = "Blocked"
+
+        # --- Directory Traversal ---
+        elif atk in ["directory traversal", "path traversal"]:
+            traversal_patterns = ["../", "..\\", "%2e", "%2f", "/etc/passwd", "C:\\windows\\system32"]
+            if any(p.lower() in body.lower() for p in traversal_patterns):
+                evidence = f"Traversal attempt found in POST body ({body[:80]}...)"
+                custom_stage = "Successful"
+            else:
+                evidence = "Traversal payload missing"
+                custom_stage = "Blocked"
+
+        # --- WebShell Upload ---
+        elif atk == "webshell":
+            if method.upper() in ["POST", "PUT"] and len(body) > 10:
+                evidence = f"Possible webshell upload ({len(body)} bytes)"
+                custom_stage = "Successful"
+            else:
+                evidence = "Suspicious method but insufficient payload"
+                custom_stage = "Blocked"
+
+        # --- OTHER ATTACK TYPES (Fallback) ---
         else:
-            stage_label = "Blocked"
+            evidence = row.get("evidence", "Pattern match detected")
+            custom_stage = base_stage
+
+        # ======== SEVERITY ========
+        severity = _severity_for_attack(
+            attack_type,
+            url,
+            custom_stage == "Successful",
+            1
+        )
+
+        # ======== FINAL OBJECT ========
         records.append({
             "id": int(idx) + 1,
             "timestamp": timestamp,
@@ -302,18 +357,14 @@ def attacks(request):
             "type": attack_type,
             "severity": severity,
             "status_code": status_code if status_code > 0 else "N/A",
-            "status": stage_label,
-            "result": stage_label,
+            "status": custom_stage,
+            "result": custom_stage,
             "url": url,
             "evidence": evidence,
-
-            # NEW — send to frontend
-            "byte_size": byte_size,   # <---
+            "byte_size": byte_size,     # <--- INCLUDED
         })
 
     return JsonResponse(records, safe=False)
-
-
 
 
 # ============================================================
