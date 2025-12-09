@@ -14,7 +14,7 @@ from django.conf import settings
 
 import pandas as pd
 
-from .parsers import pcap_to_dataframe
+from .parsers import parse_pcap_tshark as pcap_to_dataframe
 from .threat_analyzer import run_full_analysis
 from .xai_bert import get_explanation, get_mitigation_advice
 
