@@ -42,6 +42,12 @@ def parse_pcap(file_path):
         dst_port = pkt[TCP].dport
         timestamp = float(pkt.time)
 
+        # --- NEW: compute byte size of this packet ---
+        try:
+            packet_bytes = int(pkt[IP].len) if hasattr(pkt[IP], "len") else len(pkt)
+        except Exception:
+            packet_bytes = len(pkt)
+
         if pkt.haslayer(HTTPRequest):
             http = pkt[HTTPRequest]
             host = http.Host.decode('utf-8', errors='ignore') if http.Host else ""
@@ -65,7 +71,8 @@ def parse_pcap(file_path):
                 "Source_IP": src_ip,
                 "URL": url,
                 "POST_Body": body.strip(),
-                "Status_Code": 0 
+                "Status_Code": 0,
+                "Byte_Size": packet_bytes,   # <--- ADDED
             }
 
         elif pkt.haslayer(HTTPResponse):
@@ -79,12 +86,15 @@ def parse_pcap(file_path):
                 
                 req_data = pending_requests.pop(match_key)
                 req_data["Status_Code"] = status_code
+                # keep the original request's Byte_Size as-is
                 data_rows.append(req_data)
 
+    # Add any unmatched requests
     for req in pending_requests.values():
         data_rows.append(req)
 
     return pd.DataFrame(data_rows)
+
 
 # ==========================================
 # 2. CSV PARSER (Direct Read)

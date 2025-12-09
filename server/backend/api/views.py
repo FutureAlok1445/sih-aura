@@ -86,7 +86,7 @@ def upload_capture(request):
                 ]).to_csv(output_csv_path, index=False)
                 return
 
-            # 2. SANITIZATION 🛡️ (Prevent KeyErrors downstream)
+            # 2. SANITIZATION 🛡 (Prevent KeyErrors downstream)
             
             # Ensure URL exists
             if "URL" not in df.columns:
@@ -228,7 +228,6 @@ def _filtered_attack_rows(df: pd.DataFrame) -> pd.DataFrame:
     """
     Apply the same filtering logic used by /api/attacks/:
     - drop Benign
-    - drop any 'sleep' URLs (noise)
     """
     if df.empty:
         return df
@@ -239,9 +238,8 @@ def _filtered_attack_rows(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=df.columns)
 
     df = df.copy()
-    # Force conversion to string to handle NaN or float/int URLs safely
-    df["URL_str"] = df["URL"].astype(str).str.lower()
-    mask = (df["attack_type"] != "Benign") & ~df["URL_str"].str.contains("sleep")
+    # Filter out Benign attacks
+    mask = (df["attack_type"] != "Benign")
     return df[mask]
 
 
@@ -266,43 +264,41 @@ def attacks(request):
 
     records = []
     for idx, row in df_attacks.iterrows():
-        # ... (Existing logic for type, ip, url, etc) ...
         attack_type = row.get("attack_type", "Benign")
         src_ip = row.get("Source_IP", "")
         url = row.get("URL", "")
         timestamp = row.get("Timestamp", "")
         
-        # --- NEW FIELDS ---
         dest_ip = row.get("Dest_IP", "-")
         method = row.get("Method", "GET")
         body = row.get("POST_Body", "")
-        # ------------------
+        # NEW FIELD — BYTES
+        byte_size = row.get("Byte_Size", 0)   # <---
 
-        # ... (Existing Status Code Logic) ...
         raw_status = row.get("Status_Code", 0)
         try:
             status_code = int(float(str(raw_status))) if raw_status != "" else 0
         except Exception:
             status_code = 0
 
-        # ... (Existing Risk/Evidence Logic) ...
         evidence = row.get("evidence", "Pattern match detected")
         success = 200 <= status_code < 300
         severity = _severity_for_attack(attack_type, str(url), success, 1)
 
-        # Result Label
-        if 200 <= status_code < 300: stage_label = "Successful"
-        elif status_code == 0: stage_label = "Unknown"
-        else: stage_label = "Blocked"
-
+        if 200 <= status_code < 300:
+            stage_label = "Successful"
+        elif status_code == 0:
+            stage_label = "Unknown"
+        else:
+            stage_label = "Blocked"
         records.append({
             "id": int(idx) + 1,
             "timestamp": timestamp,
             "ip": src_ip,
-            "dest_ip": dest_ip,   # <--- Pass to frontend
-            "method": method,     # <--- Pass to frontend
-            "post_body": body,    # <--- Pass to frontend
-            "target": url,        # Using URL as target
+            "dest_ip": dest_ip,
+            "method": method,
+            "post_body": body,
+            "target": url,
             "type": attack_type,
             "severity": severity,
             "status_code": status_code if status_code > 0 else "N/A",
@@ -310,9 +306,14 @@ def attacks(request):
             "result": stage_label,
             "url": url,
             "evidence": evidence,
+
+            # NEW — send to frontend
+            "byte_size": byte_size,   # <---
         })
 
     return JsonResponse(records, safe=False)
+
+
 
 
 # ============================================================
