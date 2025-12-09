@@ -1,0 +1,10 @@
+sih-aura/server/backend/
+sih-aura/server/backend/api/__pycache__/
+/*.pt
+/.ipynb_checkpoints
+sih-aura/server/backend/models/
+**/ml_model
+**/logs
+**/models
+**/uploads
+**/__pycache__

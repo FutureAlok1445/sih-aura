@@ -66,7 +66,8 @@ export default function Scan() {
         accept: {
             'application/vnd.tcpdump.pcap': ['.pcap', '.cap'],
             'application/x-pcapng': ['.pcapng'],
-            'application/octet-stream': ['.pcap', '.cap', '.pcapng']
+            'application/octet-stream': ['.pcap', '.cap', '.pcapng','csv',],
+            "text/csv": [".csv"],
         },
         maxFiles: 1
     });

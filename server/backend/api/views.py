@@ -5,6 +5,8 @@ from rest_framework.response import Response
 import os
 import uuid
 import urllib.parse
+import threading # <--- Added for background processing
+import json      # <--- Added for analyze_attack
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -14,6 +16,7 @@ import pandas as pd
 
 from .parsers import pcap_to_dataframe
 from .threat_analyzer import run_full_analysis
+from .xai_bert import get_explanation, get_mitigation_advice
 
 # ============================================================
 #  Upload endpoints
@@ -32,8 +35,8 @@ def upload_pcap(request):
 def upload_capture(request):
     """
     POST /api/upload-capture/
-    Main endpoint used by frontend to upload a PCAP/PCAPNG,
-    run analysis, and save analysis_*.csv in /uploads.
+    Main endpoint used by frontend to upload a PCAP/PCAPNG/CSV.
+    Runs analysis in a BACKGROUND THREAD and returns immediately.
     """
     if request.method != "POST":
         return JsonResponse({"error": "Only POST allowed"}, status=405)
@@ -45,8 +48,9 @@ def upload_capture(request):
     _, ext = os.path.splitext(up_file.name)
     ext = ext.lower()
 
-    if ext not in [".pcap", ".pcapng"]:
-        return JsonResponse({"error": "Only .pcap or .pcapng supported"}, status=400)
+    # 🚀 UPDATED — allow CSV as input
+    if ext not in [".pcap", ".pcapng", ".csv"]:
+        return JsonResponse({"error": "Only .pcap, .pcapng or .csv supported"}, status=400)
 
     upload_dir = os.path.join(settings.BASE_DIR, "uploads")
     os.makedirs(upload_dir, exist_ok=True)
@@ -54,31 +58,72 @@ def upload_capture(request):
     tmp_name = f"{uuid.uuid4()}{ext}"
     tmp_path = os.path.join(upload_dir, tmp_name)
 
+    # Define result path immediately
+    result_name = f"analysis_{uuid.uuid4()}.csv"
+    result_path = os.path.join(upload_dir, result_name)
+
     # save uploaded file to disk
     with open(tmp_path, "wb+") as dest:
         for chunk in up_file.chunks():
             dest.write(chunk)
 
-    try:
-        df = pcap_to_dataframe(tmp_path)
-        if df.empty:
-            return JsonResponse({"message": "No HTTP traffic found"}, status=200)
+    # --- THE BACKGROUND TASK (Threaded) ---
+    def run_analysis_task(temp_path, output_csv_path, file_ext):
+        try:
+            # 1. Load Dataframe based on file type
+            if file_ext == ".csv":
+                # If uploading a raw CSV, read it directly
+                df = pd.read_csv(temp_path).fillna("")
+            else:
+                # If PCAP, convert to DF using your parser
+                df = pcap_to_dataframe(temp_path)
 
-        analyzed = run_full_analysis(df)
+            if df.empty:
+                # Save empty structure with ALL headers to prevent frontend crash
+                pd.DataFrame(columns=[
+                    "Timestamp", "Source_IP", "URL", "attack_type", 
+                    "evidence", "detection_method", "Status_Code"
+                ]).to_csv(output_csv_path, index=False)
+                return
 
-        result_name = f"analysis_{uuid.uuid4()}.csv"
-        result_path = os.path.join(upload_dir, result_name)
-        analyzed.to_csv(result_path, index=False)
+            # 2. SANITIZATION 🛡️ (Prevent KeyErrors downstream)
+            
+            # Ensure URL exists
+            if "URL" not in df.columns:
+                df["URL"] = ""
 
-        return JsonResponse({
-            "message": "Analysis complete",
-            "summary": analyzed["attack_type"].value_counts().to_dict(),
-            "csv": result_name,
-            "total_requests": len(analyzed),
-        })
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+            # Ensure Timestamp is numeric
+            if "Timestamp" in df.columns:
+                df["Timestamp"] = pd.to_numeric(df["Timestamp"], errors="coerce").fillna(0)
+            
+            # Ensure Status_Code is numeric (critical for Breach calculation)
+            if "Status_Code" in df.columns:
+                df["Status_Code"] = pd.to_numeric(df["Status_Code"], errors="coerce").fillna(0)
+            else:
+                df["Status_Code"] = 0
+
+            # 3. Run Analysis
+            # This calls the threat_analyzer which handles incremental saving
+            run_full_analysis(df, save_path=output_csv_path)
+
+        except Exception as e:
+            print(f"Error in background analysis: {e}")
+        finally:
+            # Clean up input file
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    # Start the thread
+    thread = threading.Thread(target=run_analysis_task, args=(tmp_path, result_path, ext))
+    thread.daemon = True 
+    thread.start()
+
+    # Return IMMEDIATELY so frontend doesn't wait
+    return JsonResponse({
+        "message": "Analysis started in background",
+        "csv": result_name,
+        "status": "processing"
+    })
 
 
 # ============================================================
@@ -142,7 +187,7 @@ def _risk_score(attack_type: str, url: str, success: bool, attempt_count: int) -
     risk += ATTACK_SEVERITY.get(attack_type, 10)
 
     # 2) Sensitive URL weighting
-    url_l = (url or "").lower()
+    url_l = (str(url) or "").lower()
     if any(x in url_l for x in SENSITIVE_PATHS):
         risk += 15
 
@@ -185,7 +230,16 @@ def _filtered_attack_rows(df: pd.DataFrame) -> pd.DataFrame:
     - drop Benign
     - drop any 'sleep' URLs (noise)
     """
+    if df.empty:
+        return df
+
+    # --- SAFETY CHECK FOR KeyError: 'URL' ---
+    if "URL" not in df.columns:
+        # Return empty DF to prevent crash if file is malformed
+        return pd.DataFrame(columns=df.columns)
+
     df = df.copy()
+    # Force conversion to string to handle NaN or float/int URLs safely
     df["URL_str"] = df["URL"].astype(str).str.lower()
     mask = (df["attack_type"] != "Benign") & ~df["URL_str"].str.contains("sleep")
     return df[mask]
@@ -203,66 +257,57 @@ def attacks(request):
     if not csv_path:
         return JsonResponse([], safe=False)
 
-    df = pd.read_csv(csv_path).fillna("")
+    try:
+        df = pd.read_csv(csv_path).fillna("")
+    except Exception:
+        return JsonResponse([], safe=False)
 
-    # apply the central filtering logic
     df_attacks = _filtered_attack_rows(df)
 
     records = []
     for idx, row in df_attacks.iterrows():
+        # ... (Existing logic for type, ip, url, etc) ...
         attack_type = row.get("attack_type", "Benign")
         src_ip = row.get("Source_IP", "")
         url = row.get("URL", "")
         timestamp = row.get("Timestamp", "")
+        
+        # --- NEW FIELDS ---
+        dest_ip = row.get("Dest_IP", "-")
+        method = row.get("Method", "GET")
+        body = row.get("POST_Body", "")
+        # ------------------
 
-        # 1. Get Status Code (now extracted by parsers.py)
-        # Handle cases where it might be empty string or float
+        # ... (Existing Status Code Logic) ...
         raw_status = row.get("Status_Code", 0)
         try:
             status_code = int(float(str(raw_status))) if raw_status != "" else 0
         except Exception:
             status_code = 0
 
+        # ... (Existing Risk/Evidence Logic) ...
         evidence = row.get("evidence", "Pattern match detected")
-
-        try:
-            parsed = urllib.parse.urlparse(str(url))
-            target = parsed.netloc or url
-        except Exception:
-            target = url
-
-        # Determine if HTTP result indicates success for risk calculation
         success = 200 <= status_code < 300
+        severity = _severity_for_attack(attack_type, str(url), success, 1)
 
-        # Severity from risk model (now using status code + URL)
-        severity = _severity_for_attack(
-            attack_type=attack_type,
-            url=url,
-            success=success,
-            attempt_count=1,  # can be extended with per-IP counters
-        )
-
-        # 2. Determine Status / Stage from Status Code
-        # 2xx = Successful (server executed request)
-        # 4xx/5xx = Blocked/Failed (rejected)
-        if 200 <= status_code < 300:
-            stage_label = "Successful"
-        elif status_code == 0:
-            stage_label = "Unknown"  # No response captured
-        else:
-            stage_label = "Blocked"  # 403, 404, 500 etc.
+        # Result Label
+        if 200 <= status_code < 300: stage_label = "Successful"
+        elif status_code == 0: stage_label = "Unknown"
+        else: stage_label = "Blocked"
 
         records.append({
             "id": int(idx) + 1,
             "timestamp": timestamp,
             "ip": src_ip,
-            "target": target,
+            "dest_ip": dest_ip,   # <--- Pass to frontend
+            "method": method,     # <--- Pass to frontend
+            "post_body": body,    # <--- Pass to frontend
+            "target": url,        # Using URL as target
             "type": attack_type,
             "severity": severity,
             "status_code": status_code if status_code > 0 else "N/A",
-            # stage/status derived directly from HTTP status code
             "status": stage_label,
-            "result": stage_label,  # kept for compatibility if frontend uses `result`
+            "result": stage_label,
             "url": url,
             "evidence": evidence,
         })
@@ -289,35 +334,48 @@ def stats(request):
             "breakdown": {},
         })
 
-    df = pd.read_csv(csv_path).fillna("")
+    try:
+        df = pd.read_csv(csv_path).fillna("")
+    except Exception:
+        # Return empty stats if file read fails
+        return JsonResponse({
+            "total": 0, "threats": 0, "breaches": 0, "health": 100, "breakdown": {},
+        })
 
     # 1. TOTAL RECORDS
     total = len(df)
 
     # 2. THREATS
     # logic: count any row where attack_type is NOT 'Benign'
-    df_threats = df[df["attack_type"] != "Benign"].copy()
+    if "attack_type" in df.columns:
+        df_threats = df[df["attack_type"] != "Benign"].copy()
+    else:
+        df_threats = pd.DataFrame()
+        
     threats = len(df_threats)
 
     # 3. BREACHES (Critical Fix)
     # Only count as a breach if the Status Code indicates success (200-299)
-    df_threats["Status_Code"] = pd.to_numeric(
-        df_threats["Status_Code"],
-        errors='coerce'
-    ).fillna(0).astype(int)
+    breaches = 0
+    # FIX: Ensure columns exist before filtering
+    if not df_threats.empty and "Status_Code" in df_threats.columns:
+        df_threats["Status_Code"] = pd.to_numeric(
+            df_threats["Status_Code"],
+            errors='coerce'
+        ).fillna(0).astype(int)
 
-    breach_types = {
-        "Command Injection", "SSRF", "Directory Traversal / LFI",
-        "Remote File Inclusion (RFI)", "Shell Upload Attempt", "Bruteforce Attack",
-    }
+        breach_types = {
+            "Command Injection", "SSRF", "Directory Traversal / LFI",
+            "Remote File Inclusion (RFI)", "Shell Upload Attempt", "Bruteforce Attack",
+        }
 
-    # Filter: Critical Attack Type AND Successful HTTP Response (200 OK, 201 Created, etc.)
-    active_breaches = df_threats[
-        (df_threats["attack_type"].isin(breach_types)) &
-        (df_threats["Status_Code"] >= 200) &
-        (df_threats["Status_Code"] < 300)
-    ]
-    breaches = len(active_breaches)
+        # Filter: Critical Attack Type AND Successful HTTP Response (200 OK, 201 Created, etc.)
+        active_breaches = df_threats[
+            (df_threats["attack_type"].isin(breach_types)) &
+            (df_threats["Status_Code"] >= 200) &
+            (df_threats["Status_Code"] < 300)
+        ]
+        breaches = len(active_breaches)
 
     # 4. HEALTH CALCULATION
     if total == 0:
@@ -327,7 +385,9 @@ def stats(request):
         health = max(0, 100 - risk)
 
     # 5. DETAILED BREAKDOWN by detection method
-    breakdown = df_threats.get('detection_method', pd.Series(dtype=str)).value_counts().to_dict()
+    breakdown = {}
+    if not df_threats.empty:
+        breakdown = df_threats.get('detection_method', pd.Series(dtype=str)).value_counts().to_dict()
 
     return JsonResponse({
         "total": int(total),
@@ -352,9 +412,12 @@ def traffic(request):
     if not csv_path:
         return JsonResponse([], safe=False)
 
-    df = pd.read_csv(csv_path).fillna("")
+    try:
+        df = pd.read_csv(csv_path).fillna("")
+    except Exception:
+        return JsonResponse([], safe=False)
 
-    # Filter out noise
+    # Filter out noise (Uses the robust function now)
     df_attacks = _filtered_attack_rows(df)
 
     if df_attacks.empty:
@@ -362,8 +425,13 @@ def traffic(request):
 
     # --- TIME SERIES LOGIC ---
     try:
+        # Safety: Check if Timestamp exists
+        if "Timestamp" not in df_attacks.columns:
+             return JsonResponse([], safe=False)
+
         # Convert Timestamp column to datetime objects
         # We assume timestamp is Unix float (from Scapy) or standard string
+        # 'coerce' handles errors gracefully
         df_attacks['dt'] = pd.to_datetime(
             df_attacks['Timestamp'],
             unit='s',
@@ -390,7 +458,7 @@ def traffic(request):
             data.append({
                 # Format time as HH:MM:SS for the X-Axis
                 "time": row['dt'].strftime('%H:%M:%S'),
-                "attacks": int(row['attacks']),
+                "attacks": int(row['attacks'])
             })
 
         return JsonResponse(data, safe=False)
@@ -400,4 +468,37 @@ def traffic(request):
         return JsonResponse([], safe=False)
 
 
-# NOTE: XAI/BERT explain endpoint removed/disabled; import would fail without xai_bert module.
+# ============================================================
+#  /api/explain/  – per-attack BERT XAI explanation
+# ============================================================
+
+@csrf_exempt
+def analyze_attack(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Only POST allowed"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        
+        # Extract data from frontend request
+        attack_data = data.get('attack_data') # The payload (e.g., <script>...)
+        attack_type = data.get('attack_type') # The label (e.g., "XSS")
+
+        if not attack_data or not attack_type:
+            return JsonResponse({"error": "Missing attack_data or attack_type"}, status=400)
+
+        # 1. Get Visual Explanation (Captum / SecBERT)
+        # Note: We pass attack_type now so SecBERT knows which class output to analyze
+        explanation = get_explanation(attack_data, attack_type)
+
+        # 2. Get General Advice (Gemma)
+        mitigation = get_mitigation_advice(attack_data, attack_type, explanation)
+
+        return JsonResponse({
+            "explanation": explanation,
+            "mitigation": mitigation,
+        })
+
+    except Exception as e:
+        print(f"Server Error in analyze_attack: {e}")
+        return JsonResponse({"error": str(e)}, status=500)
