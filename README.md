@@ -47,9 +47,6 @@
 17. [Limitations](#-limitations)
 18. [Roadmap](#-roadmap)
 19. [Contributing](#-contributing)
-20. [License](#-license)
-21. [Authors & Acknowledgements](#-authors--acknowledgements)
-22. [Visual Assets](#-visual-assets)
 
 ---
 
@@ -614,25 +611,4 @@ git commit -m "feat: describe your change"
 git push origin feature/your-feature-name
 ```
 
-Please describe **what you tested and how** in your PR description, especially for changes to the detection layers or the response-correlation logic in `views.py`/`threat_analyzer.py`.
 
----
-
-## 📄 License
-
-No `LICENSE` file is currently present in this repository. Until one is added, all rights are reserved by default under standard copyright — consider adding an OSS license (MIT, Apache-2.0, etc.) if you intend for others to reuse this code.
-
----
-
-## 👥 Authors & Acknowledgements
-
-- **Repository:** [FutureAlok1445/sih-aura](https://github.com/FutureAlok1445/sih-aura)
-- **Contributors (per commit history):** Apoorva Puranik
-
-If you're part of the team and want additional names/roles credited here, add them directly — this section intentionally lists only what's verifiable from the repository itself.
-
----
-
-## 🖼️ Visual Assets
-
-The only visual asset used in this README is `docs/preview/dashboard-preview.svg` — a hand-built, stylized SVG mockup of the dashboard layout (stat cards, traffic chart, donut chart, threat log), used purely for visual polish. It is **not** a screenshot of the running application, and it renders natively on GitHub with no external dependencies. If you'd like to replace it with real screenshots later, add them anywhere under `docs/` and swap the `<img src="...">` paths in the [Application Walkthrough](#-application-walkthrough) section above.
