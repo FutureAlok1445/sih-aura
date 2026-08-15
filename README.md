@@ -49,9 +49,7 @@
 17. [Limitations](#-limitations)
 18. [Roadmap](#-roadmap)
 19. [Contributing](#-contributing)
-20. [License](#-license)
-21. [Authors & Acknowledgements](#-authors--acknowledgements)
-22. [README Assets I Should Add](#-readme-assets-i-should-add)
+
 
 ---
 
@@ -642,22 +640,5 @@ git commit -m "feat: describe your change"
 git push origin feature/your-feature-name
 ```
 
-Please describe **what you tested and how** in your PR description, especially for changes to the detection layers or the response-correlation logic in `views.py`/`threat_analyzer.py`.
 
----
-
-## 📄 License
-
-No `LICENSE` file is currently present in this repository. Until one is added, all rights are reserved by default under standard copyright — consider adding an OSS license (MIT, Apache-2.0, etc.) if you intend for others to reuse this code.
-
----
-
-## 👥 Authors & Acknowledgements
-
-- **Repository:** [FutureAlok1445/sih-aura](https://github.com/FutureAlok1445/sih-aura)
-- **Contributors (per commit history):** Apoorva Puranik
-
-If you're part of the team and want additional names/roles credited here, add them directly — this section intentionally lists only what's verifiable from the repository itself.
-
----
 ags above with the same filenames — the paths already used in this README (`docs/screenshots/...`) match this structure exactly, so no other edits are needed after you commit the images.
