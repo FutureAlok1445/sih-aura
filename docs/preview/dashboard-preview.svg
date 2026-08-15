@@ -1,1 +1,140 @@
+<svg viewBox="0 0 1000 620" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#05070c"/>
+      <stop offset="100%" stop-color="#02040a"/>
+    </linearGradient>
+    <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="cta" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
 
+  <!-- Base -->
+  <rect x="0" y="0" width="1000" height="620" rx="14" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="999" height="619" rx="14" fill="none" stroke="#161b26" stroke-width="1"/>
+
+  <!-- Top Nav -->
+  <rect x="0" y="0" width="1000" height="54" rx="14" fill="#080a10"/>
+  <rect x="0" y="40" width="1000" height="14" fill="#080a10"/>
+  <line x1="0" y1="54" x2="1000" y2="54" stroke="#161b26" stroke-width="1"/>
+  <text x="32" y="33" fill="#ffffff" font-size="20" font-weight="700" letter-spacing="1">AURA</text>
+  <text x="360" y="32" fill="#9ca3af" font-size="12">Intelligence Engine</text>
+  <text x="500" y="32" fill="#9ca3af" font-size="12">Detection Rules</text>
+  <text x="630" y="32" fill="#9ca3af" font-size="12">Documentation</text>
+  <rect x="860" y="14" width="110" height="26" rx="13" fill="url(#cta)"/>
+  <text x="915" y="31" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">SCAN NOW</text>
+
+  <!-- Stat Cards -->
+  <g font-size="11" font-weight="600">
+    <!-- Card 1 -->
+    <rect x="30" y="78" width="220" height="86" rx="10" fill="#0b0e16" stroke="#1c2230"/>
+    <text x="50" y="106" fill="#7c8598">TOTAL EVENTS</text>
+    <text x="50" y="140" fill="#ffffff" font-size="26" font-weight="700">1,842</text>
+    <circle cx="222" cy="98" r="10" fill="#1e3a8a" opacity="0.5"/>
+
+    <!-- Card 2 -->
+    <rect x="270" y="78" width="220" height="86" rx="10" fill="#0b0e16" stroke="#1c2230"/>
+    <text x="290" y="106" fill="#7c8598">THREATS DETECTED</text>
+    <text x="290" y="140" fill="#facc15" font-size="26" font-weight="700">233</text>
+    <circle cx="462" cy="98" r="10" fill="#78350f" opacity="0.5"/>
+
+    <!-- Card 3 -->
+    <rect x="510" y="78" width="220" height="86" rx="10" fill="#0b0e16" stroke="#7f1d1d"/>
+    <text x="530" y="106" fill="#7c8598">ACTIVE BREACHES</text>
+    <text x="530" y="140" fill="#f87171" font-size="26" font-weight="700">12</text>
+    <text x="530" y="156" fill="#f87171" font-size="9" letter-spacing="1">CRITICAL</text>
+
+    <!-- Card 4 -->
+    <rect x="750" y="78" width="220" height="86" rx="10" fill="#0b0e16" stroke="#1c2230"/>
+    <text x="770" y="106" fill="#7c8598">SYSTEM HEALTH</text>
+    <text x="770" y="140" fill="#4ade80" font-size="26" font-weight="700">87%</text>
+    <circle cx="942" cy="98" r="10" fill="#14532d" opacity="0.5"/>
+  </g>
+
+  <!-- Traffic Area Chart -->
+  <rect x="30" y="184" width="580" height="228" rx="10" fill="#0b0e16" stroke="#1c2230"/>
+  <text x="50" y="212" fill="#9ca3af" font-size="12" font-weight="600">Global Attack Traffic</text>
+  <g stroke="#161b26" stroke-width="1">
+    <line x1="50" y1="240" x2="590" y2="240"/>
+    <line x1="50" y1="280" x2="590" y2="280"/>
+    <line x1="50" y1="320" x2="590" y2="320"/>
+    <line x1="50" y1="360" x2="590" y2="360"/>
+  </g>
+  <path d="M50,360 L110,340 L170,300 L230,320 L290,250 L350,270 L410,220 L470,260 L530,230 L590,245 L590,392 L50,392 Z" fill="url(#areaFill)"/>
+  <polyline points="50,360 110,340 170,300 230,320 290,250 350,270 410,220 470,260 530,230 590,245" fill="none" stroke="#22d3ee" stroke-width="2.5"/>
+
+  <!-- Donut Chart -->
+  <rect x="626" y="184" width="344" height="228" rx="10" fill="#0b0e16" stroke="#1c2230"/>
+  <text x="646" y="212" fill="#9ca3af" font-size="12" font-weight="600">Attack Vector Distribution</text>
+  <g transform="translate(720,300)">
+    <circle r="62" fill="none" stroke="#1c2230" stroke-width="26"/>
+    <circle r="62" fill="none" stroke="#f43f5e" stroke-width="26" stroke-dasharray="120 390" stroke-dashoffset="0"/>
+    <circle r="62" fill="none" stroke="#fbbf24" stroke-width="26" stroke-dasharray="90 390" stroke-dashoffset="-120"/>
+    <circle r="62" fill="none" stroke="#22d3ee" stroke-width="26" stroke-dasharray="70 390" stroke-dashoffset="-210"/>
+    <circle r="62" fill="none" stroke="#a78bfa" stroke-width="26" stroke-dasharray="50 390" stroke-dashoffset="-280"/>
+    <text x="0" y="6" fill="#ffffff" font-size="20" font-weight="700" text-anchor="middle">233</text>
+  </g>
+  <g font-size="10" fill="#9ca3af">
+    <circle cx="856" cy="270" r="5" fill="#f43f5e"/><text x="868" y="274">SQL Injection</text>
+    <circle cx="856" cy="292" r="5" fill="#fbbf24"/><text x="868" y="296">XSS</text>
+    <circle cx="856" cy="314" r="5" fill="#22d3ee"/><text x="868" y="318">Directory Traversal</text>
+    <circle cx="856" cy="336" r="5" fill="#a78bfa"/><text x="868" y="340">Spoofing</text>
+  </g>
+
+  <!-- Threat Log Table -->
+  <rect x="30" y="428" width="940" height="164" rx="10" fill="#0b0e16" stroke="#1c2230"/>
+  <text x="50" y="456" fill="#9ca3af" font-size="12" font-weight="600">Threat Log</text>
+  <text x="900" y="456" fill="#6b7280" font-size="10">CSV · JSON export</text>
+  <line x1="50" y1="468" x2="950" y2="468" stroke="#1c2230"/>
+
+  <g font-size="10" fill="#9ca3af">
+    <text x="50" y="486">SEVERITY</text>
+    <text x="160" y="486">TYPE</text>
+    <text x="420" y="486">SOURCE IP</text>
+    <text x="600" y="486">STATUS</text>
+    <text x="760" y="486">EVIDENCE</text>
+  </g>
+
+  <g font-size="10">
+    <!-- row 1 -->
+    <rect x="50" y="498" width="60" height="16" rx="8" fill="#7f1d1d"/>
+    <text x="80" y="510" fill="#fca5a5" text-anchor="middle" font-weight="700">CRITICAL</text>
+    <text x="160" y="510" fill="#e5e7eb">SQL Injection</text>
+    <text x="420" y="510" fill="#9ca3af">192.168.1.15</text>
+    <rect x="600" y="500" width="70" height="14" rx="7" fill="#7f1d1d" opacity="0.6"/>
+    <text x="635" y="510" fill="#fca5a5" text-anchor="middle" font-size="9">SUCCESSFUL</text>
+    <text x="760" y="510" fill="#6b7280">SQLi payload size: 42 bytes</text>
+
+    <!-- row 2 -->
+    <rect x="50" y="524" width="60" height="16" rx="8" fill="#78350f"/>
+    <text x="80" y="536" fill="#fcd34d" text-anchor="middle" font-weight="700">HIGH</text>
+    <text x="160" y="536" fill="#e5e7eb">Cross-Site Scripting</text>
+    <text x="420" y="536" fill="#9ca3af">10.0.0.42</text>
+    <rect x="600" y="526" width="70" height="14" rx="7" fill="#78350f" opacity="0.6"/>
+    <text x="635" y="536" fill="#fcd34d" text-anchor="middle" font-size="9">BLOCKED</text>
+    <text x="760" y="536" fill="#6b7280">XSS markers detected</text>
+
+    <!-- row 3 -->
+    <rect x="50" y="550" width="60" height="16" rx="8" fill="#1e3a8a"/>
+    <text x="80" y="562" fill="#93c5fd" text-anchor="middle" font-weight="700">MEDIUM</text>
+    <text x="160" y="562" fill="#e5e7eb">URL Spoofing</text>
+    <text x="420" y="562" fill="#9ca3af">203.0.113.7</text>
+    <rect x="600" y="552" width="70" height="14" rx="7" fill="#1e3a8a" opacity="0.6"/>
+    <text x="635" y="562" fill="#93c5fd" text-anchor="middle" font-size="9">BLOCKED</text>
+    <text x="760" y="562" fill="#6b7280">AI detected spoofing pattern</text>
+
+    <!-- row 4 -->
+    <rect x="50" y="576" width="60" height="16" rx="8" fill="#14532d"/>
+    <text x="80" y="588" fill="#86efac" text-anchor="middle" font-weight="700">LOW</text>
+    <text x="160" y="588" fill="#e5e7eb">Bruteforce Attack</text>
+    <text x="420" y="588" fill="#9ca3af">198.51.100.23</text>
+    <rect x="600" y="578" width="70" height="14" rx="7" fill="#14532d" opacity="0.6"/>
+    <text x="635" y="588" fill="#86efac" text-anchor="middle" font-size="9">BLOCKED</text>
+    <text x="760" y="588" fill="#6b7280">High frequency failed logins</text>
+  </g>
+</svg>
