@@ -19,9 +19,7 @@
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/hero-home.png" alt="AURA — Home / landing screen" width="850">
-  <br>
-  <sub><em>⬆️ Add a screenshot here — see <a href="#-readme-assets-i-should-add">README Assets I Should Add</a></em></sub>
+  <img src="docs/preview/dashboard-preview.svg" alt="AURA dashboard preview mockup" width="850">
 </p>
 
 > **What AURA is, in one line:** AURA ingests raw network captures (PCAP/PCAPNG) or HTTP/IPDR-style CSV logs, runs every request through a four-layer detection pipeline (regex rules → machine learning → spoofing detection → a fine-tuned BERT model), correlates each flagged request with the server's actual HTTP response, and shows an analyst a live dashboard that separates **noise (blocked attempts)** from **signal (confirmed breaches)** — with an AI-generated, token-level explanation for every detection.
@@ -49,7 +47,9 @@
 17. [Limitations](#-limitations)
 18. [Roadmap](#-roadmap)
 19. [Contributing](#-contributing)
-
+20. [License](#-license)
+21. [Authors & Acknowledgements](#-authors--acknowledgements)
+22. [Visual Assets](#-visual-assets)
 
 ---
 
@@ -69,19 +69,11 @@ AURA is a single-page React app with four routes (`/`, `/scan`, `/dashboard`, `/
 
 ### 1. Landing Page — `/` (`src/pages/Home.jsx`)
 
-<p align="center">
-  <img src="docs/screenshots/hero-home.png" alt="AURA home page hero and threat grid" width="800">
-</p>
-
 - **What the user does:** Lands on the animated hero ("Silence the Noise. Confirm the Breach."), scrolls through an "Operational Logic" section (Collect Data → Analyze → Final Decision) and a grid of 11 "Monitored Threats" cards (Typosquatting, SQL Injection, XSS, Directory Traversal, Command Injection, SSRF, LFI/RFI, Credential Stuffing, HTTP Parameter Pollution, XXE, Web Shells).
 - **What the system does:** Purely presentational — no API calls happen on this page.
 - **What the user sees:** A cinematic, scroll-animated marketing/briefing surface (`ContainerScrollAnimation`, `InteractiveTerminal`, `Spotlight`, `BackgroundBeams`) that sets expectations before they run a real scan.
 
 ### 2. Scan Console — `/scan` (`src/pages/Scan.jsx`)
-
-<p align="center">
-  <img src="docs/screenshots/scan-upload.png" alt="AURA scan / upload console" width="800">
-</p>
 
 - **What the user does:** Drags & drops (or browses to) a `.pcap`, `.pcapng`, `.cap`, or `.csv` file into the "Forensic PCAP Upload" tab, then clicks **EXECUTE FORENSIC ANALYSIS**. *(A "Live URL Stream" tab exists in the UI but is commented out / disabled in the current code.)*
 - **What the system does:** The file is POSTed as `multipart/form-data` to `POST /api/upload-capture/`. The Django view saves it to `server/backend/uploads/`, spins up the analysis in a background Python thread, and returns immediately with `{"status": "processing"}` — the frontend doesn't wait for analysis to finish.
@@ -90,7 +82,9 @@ AURA is a single-page React app with four routes (`/`, `/scan`, `/dashboard`, `/
 ### 3. Dashboard — `/dashboard` (`src/pages/Dashboard.jsx`)
 
 <p align="center">
-  <img src="docs/screenshots/dashboard-overview.png" alt="AURA dashboard overview" width="800">
+  <img src="docs/preview/dashboard-preview.svg" alt="AURA dashboard preview mockup" width="800">
+  <br>
+  <sub><em>Stylized layout preview — not a literal screenshot of the running app.</em></sub>
 </p>
 
 - **What the user does:** Lands on the results view, which **polls the backend every 10 seconds** so results appear incrementally as each detection layer finishes.
@@ -104,19 +98,11 @@ AURA is a single-page React app with four routes (`/`, `/scan`, `/dashboard`, `/
 
 ### 4. Per-Event AI Explanation (in-dashboard)
 
-<p align="center">
-  <img src="docs/screenshots/xai-explanation.png" alt="AURA AI explanation panel with highlighted tokens" width="800">
-</p>
-
 - **What the user does:** Clicks any row in the Threat Log Table.
 - **What the system does:** The frontend POSTs `{ attack_data, attack_type }` to `POST /api/explain/`. The backend runs **SecBERT** through **Captum's Layer Integrated Gradients** to score each token's contribution to the classification, then feeds the top-weighted tokens into **Gemma 3 (270M, instruction-tuned)** to generate two mitigation steps.
 - **What the user sees (`AttackExplanation.jsx` + `AttackVisualizer.jsx`):** The raw URL/payload re-rendered with each token color-intensity-coded by importance (darker red = more suspicious), plus a "GEMMA-3 ENHANCED" mitigation callout box.
 
 ### 5. Documentation — `/docs` and `/heuristics` (`src/pages/Docs.jsx`)
-
-<p align="center">
-  <img src="docs/screenshots/docs-page.png" alt="AURA documentation page" width="800">
-</p>
 
 - **What the user does:** Browses four static topics: Getting Started, PCAP Ingestion, Detection Rules ("Response Analysis Rules"), and API Reference.
 - **What the system does:** Nothing — this is static in-app documentation, no backend calls.
@@ -126,40 +112,28 @@ AURA is a single-page React app with four routes (`/`, `/scan`, `/dashboard`, `/
 
 ## 🔁 End-to-End Flow
 
-```text
- File Upload (.pcap / .pcapng / .csv)
-            │
-            ▼
- tshark HTTP extraction  (PCAP)   or   pandas.read_csv()  (CSV)
-            │
-            ▼
- Request/Response correlation (tcp.stream grouping, status-code backfill)
-            │
-            ▼
- ┌─────────────────────────── 4-LAYER DETECTION PIPELINE ───────────────────────────┐
- │  Layer 1: Regex Rule Matching   →   Layer 2: TF-IDF + Naive Bayes ML             │
- │            │                                    │                                │
- │            ▼                                    ▼                                │
- │  Layer 3: BERT Spoofing/Typosquat Check   →   Layer 4: Fine-tuned BERT Classifier │
- └────────────────────────────────────────────────────────────────────────────────┘
-            │
-            ▼
- Bruteforce heuristic (grouped failed-login frequency check)
-            │
-            ▼
- Response correlation: Status Code + Body heuristics → "Successful" vs "Blocked"
-            │
-            ▼
- Risk scoring (0–100)  →  Severity (Low / Medium / High / Critical)
-            │
-            ▼
- analysis_<uuid>.csv written incrementally to server/backend/uploads/
-            │
-            ▼
- Dashboard polling (/api/attacks/, /api/stats/, /api/traffic/ every 10s)
-            │
-            ▼
- Analyst clicks an event → /api/explain/ → SecBERT + Captum + Gemma-3 → XAI panel
+```mermaid
+flowchart TD
+    A["File Upload<br/>.pcap / .pcapng / .csv"] --> B{"File type?"}
+    B -->|PCAP / PCAPNG| C1["tshark HTTP extraction"]
+    B -->|CSV| C2["pandas.read_csv()"]
+    C1 --> D["Request/Response correlation<br/>tcp.stream grouping, status-code backfill"]
+    C2 --> D
+
+    D --> L1["Layer 1: Regex Rule Matching"]
+    L1 --> L2["Layer 2: TF-IDF + Naive Bayes ML"]
+    L2 --> L3["Layer 3: BERT Spoofing / Typosquat Check"]
+    L3 --> L4["Layer 4: Fine-tuned BERT Classifier"]
+    L4 --> BF["Bruteforce Heuristic<br/>grouped failed-login frequency"]
+
+    BF --> R["Response correlation<br/>Status Code + Body heuristics -&gt; Successful vs Blocked"]
+    R --> S["Risk scoring (0-100) -&gt; Severity<br/>Low / Medium / High / Critical"]
+    S --> W[("analysis_&lt;uuid&gt;.csv<br/>written incrementally to<br/>server/backend/uploads/")]
+
+    W --> P["Dashboard polling<br/>/api/attacks/, /api/stats/, /api/traffic/ every 10s"]
+    P --> X["Analyst clicks an event"]
+    X --> E["POST /api/explain/<br/>SecBERT + Captum + Gemma-3"]
+    E --> V["XAI panel: token highlighting + mitigation advice"]
 ```
 
 Each detection layer only receives the requests the **previous layer left as "Benign"** — this keeps the expensive AI layers (BERT) from re-scoring things regex/ML already caught, and the terminal output prints a running scoreboard for each stage (see `CliTable` in `threat_analyzer.py`).
@@ -640,5 +614,25 @@ git commit -m "feat: describe your change"
 git push origin feature/your-feature-name
 ```
 
+Please describe **what you tested and how** in your PR description, especially for changes to the detection layers or the response-correlation logic in `views.py`/`threat_analyzer.py`.
 
-ags above with the same filenames — the paths already used in this README (`docs/screenshots/...`) match this structure exactly, so no other edits are needed after you commit the images.
+---
+
+## 📄 License
+
+No `LICENSE` file is currently present in this repository. Until one is added, all rights are reserved by default under standard copyright — consider adding an OSS license (MIT, Apache-2.0, etc.) if you intend for others to reuse this code.
+
+---
+
+## 👥 Authors & Acknowledgements
+
+- **Repository:** [FutureAlok1445/sih-aura](https://github.com/FutureAlok1445/sih-aura)
+- **Contributors (per commit history):** Apoorva Puranik
+
+If you're part of the team and want additional names/roles credited here, add them directly — this section intentionally lists only what's verifiable from the repository itself.
+
+---
+
+## 🖼️ Visual Assets
+
+The only visual asset used in this README is `docs/preview/dashboard-preview.svg` — a hand-built, stylized SVG mockup of the dashboard layout (stat cards, traffic chart, donut chart, threat log), used purely for visual polish. It is **not** a screenshot of the running application, and it renders natively on GitHub with no external dependencies. If you'd like to replace it with real screenshots later, add them anywhere under `docs/` and swap the `<img src="...">` paths in the [Application Walkthrough](#-application-walkthrough) section above.
